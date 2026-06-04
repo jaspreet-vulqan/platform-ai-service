@@ -80,8 +80,9 @@ def _maxTokensFor(num_columns: int) -> int:
     return min(4096, 256 + 80 * max(1, num_columns))
 
 
-async def inferSchema(file_schema: FileSchemaInput, raw_request) -> Result:
-    # Lazy import keeps vLLM out of this module's import path (testability).
+async def inferSchema(file_schema: FileSchemaInput) -> Result:
+    # Lazy import keeps the HTTP/backend deps out of this module's import path,
+    # so parseInference/buildOutput stay unit-testable without a running backend.
     from engine.LLMClient import chatComplete
 
     try:
@@ -93,7 +94,7 @@ async def inferSchema(file_schema: FileSchemaInput, raw_request) -> Result:
         max_tokens = _maxTokensFor(len(file_schema.Columns))
 
         result = await chatComplete(
-            messages, raw_request, temperature=0.0, max_tokens=max_tokens
+            messages, temperature=0.0, max_tokens=max_tokens
         )
         if result.Status != 1:
             return Result(Status=0, Message=result.Message)
@@ -114,7 +115,7 @@ async def inferSchema(file_schema: FileSchemaInput, raw_request) -> Result:
                 }
             )
             result = await chatComplete(
-                messages, raw_request, temperature=0.0, max_tokens=max_tokens
+                messages, temperature=0.0, max_tokens=max_tokens
             )
             if result.Status != 1:
                 return Result(Status=0, Message=result.Message)

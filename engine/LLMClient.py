@@ -1,21 +1,14 @@
-"""In-process chat helper for internal features (e.g. schema inference).
+"""HTTP chat helper for internal features (e.g. schema inference).
 
-Calls the already-loaded model through the same vLLM serving handler that backs
-/v1/chat/completions - no HTTP hop, no self-auth. This is the single place the
-schema-inference feature talks to the LLM; when that feature moves to its own
-service, only this function changes (swap for an OpenAI HTTP client pointed at
-the vLLM service's base_url).
-
-vLLM-internal imports stay inside engine/ by design.
+Calls the vLLM backend's OpenAI-compatible /v1/chat/completions over HTTP via the
+shared client. This is the single place the schema-inference feature talks to the
+LLM; when that feature becomes its own service, only LLM_BACKEND_URL changes.
 """
 
 from typing import List, Optional
 
-from fastapi import Request
-from vllm.entrypoints.openai.protocol import ChatCompletionRequest, ErrorResponse
-
 import settings
-from engine.ServingClient import getServingChat
+from engine.Backend import backendHeaders, getClient
 from helper.LoggingHelper import getLogger
 from model.ResultModel import Result
 
@@ -24,28 +17,33 @@ logger = getLogger(__name__)
 
 async def chatComplete(
     messages: List[dict],
-    raw_request: Request,
     temperature: float = 0.0,
     max_tokens: Optional[int] = None,
 ) -> Result:
     """Run a non-streaming chat completion. Result.Data is the assistant text."""
     try:
-        request = ChatCompletionRequest(
-            model=settings.SERVED_MODEL_NAME,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens or settings.DEFAULT_MAX_TOKENS,
-            stream=False,
+        payload = {
+            "model": settings.SERVED_MODEL_NAME,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens or settings.DEFAULT_MAX_TOKENS,
+            "stream": False,
+        }
+        resp = await getClient().post(
+            "/v1/chat/completions",
+            json=payload,
+            headers=backendHeaders(),
+            timeout=settings.REQUEST_TIMEOUT,
         )
+        if resp.status_code != 200:
+            return Result(
+                Status=0,
+                Message=f"LLM backend error {resp.status_code}: {resp.text[:500]}",
+            )
 
-        response = await getServingChat().create_chat_completion(request, raw_request)
-
-        if isinstance(response, ErrorResponse):
-            message = getattr(response, "message", str(response))
-            return Result(Status=0, Message=f"LLM error: {message}")
-
-        content = response.choices[0].message.content or ""
+        data = resp.json()
+        content = data["choices"][0]["message"].get("content") or ""
         return Result(Data=content, Status=1, Message="Completion generated.")
     except Exception as ex:
         logger.exception("chatComplete failed")
-        return Result(Status=0, Message=f"Error calling LLM: {ex}")
+        return Result(Status=0, Message=f"Error calling LLM backend: {ex}")

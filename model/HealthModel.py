@@ -19,5 +19,7 @@ class ServiceInfo(BaseModel):
     max_model_len: Optional[int] = None
     tensor_parallel_size: int
     quantization: Optional[str] = None
+    load_format: Optional[str] = None
     auth_enabled: bool
-    vllm_version: Optional[str] = None
+    backend_url: str
+    backend_ready: bool

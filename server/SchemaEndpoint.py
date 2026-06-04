@@ -6,10 +6,10 @@ POST /api/v1/infer-schema
            "Message": "JSON updated successfully!"}
 
 Returns our custom Result envelope (not an OpenAI shape) — it's an internal
-feature, not part of the OpenAI-compatible surface.
+feature, not part of the proxied OpenAI surface.
 """
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 
 from engine.SchemaInferenceClient import inferSchema
 from model.ResultModel import Result
@@ -24,5 +24,5 @@ router = APIRouter()
     response_model=Result[FileSchemaOutput],
     dependencies=[Depends(requireApiKey)],
 )
-async def infer_schema(payload: FileSchemaInput, raw_request: Request) -> Result:
-    return await inferSchema(payload, raw_request)
+async def infer_schema(payload: FileSchemaInput) -> Result:
+    return await inferSchema(payload)

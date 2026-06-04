@@ -1,39 +1,32 @@
-"""Health, model listing, and info endpoints.
+"""Health and info endpoints.
 
-/health* are intentionally unauthenticated so liveness/readiness probes work.
-/v1/models is OpenAI-compatible (auth-protected). /info returns our Result
-envelope (the sample idiom, kept for auxiliary routes).
+/health* are unauthenticated so liveness/readiness probes work. /info returns the
+Result envelope. (/v1/models and /metrics are served by the proxy router.)
 """
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 import settings
-from engine.EngineClient import isReady
-from engine.ServingClient import getServingModels
+from engine.Backend import ping
 from helper.ResponseHelper import ok
 from model.HealthModel import Health, ServiceInfo
 from model.ResultModel import Result
 from server.ValidateRequest import requireApiKey
-
-try:
-    from vllm import __version__ as _VLLM_VERSION
-except Exception:  # pragma: no cover
-    _VLLM_VERSION = None
 
 router = APIRouter()
 
 
 @router.get("/health", response_model=Health)
 async def health() -> Health:
-    """Liveness: process is up and serving HTTP."""
-    return Health(status="ok", ready=isReady())
+    """Liveness: the gateway process is up and serving HTTP."""
+    return Health(status="ok", ready=True)
 
 
 @router.get("/health/ready")
 async def ready():
-    """Readiness: engine built and able to serve. 503 until ready."""
-    if isReady():
+    """Readiness: the vLLM backend is reachable and has loaded the model."""
+    if await ping():
         return Health(status="ok", ready=True)
     return JSONResponse(
         status_code=503,
@@ -41,13 +34,9 @@ async def ready():
     )
 
 
-@router.get("/v1/models", dependencies=[Depends(requireApiKey)])
-async def list_models():
-    """OpenAI-compatible model listing, served by vLLM's handler."""
-    return await getServingModels().show_available_models()
-
-
-@router.get("/info", response_model=Result[ServiceInfo], dependencies=[Depends(requireApiKey)])
+@router.get(
+    "/info", response_model=Result[ServiceInfo], dependencies=[Depends(requireApiKey)]
+)
 async def info() -> Result[ServiceInfo]:
     return ok(
         ServiceInfo(
@@ -57,8 +46,10 @@ async def info() -> Result[ServiceInfo]:
             max_model_len=settings.MAX_MODEL_LEN,
             tensor_parallel_size=settings.TENSOR_PARALLEL_SIZE,
             quantization=settings.QUANTIZATION,
+            load_format=settings.LOAD_FORMAT,
             auth_enabled=bool(settings.API_KEYS),
-            vllm_version=_VLLM_VERSION,
+            backend_url=settings.LLM_BACKEND_URL,
+            backend_ready=await ping(),
         ),
         message="Service info.",
     )

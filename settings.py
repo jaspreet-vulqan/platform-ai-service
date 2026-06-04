@@ -84,6 +84,29 @@ HOST = os.getenv("HOST", "0.0.0.0")
 PORT = _get_int("PORT", 8000)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
+# -------------------- LLM backend (vllm serve) -------------------- #
+# The gateway proxies to vLLM's own OpenAI server, run as a separate process.
+# Host/port the vLLM backend listens on (kept on localhost).
+BACKEND_HOST = os.getenv("BACKEND_HOST", "127.0.0.1")
+BACKEND_PORT = _get_int("BACKEND_PORT", 8001)
+# Full base URL of the backend; defaults to the host/port above.
+LLM_BACKEND_URL = os.getenv("LLM_BACKEND_URL") or f"http://{BACKEND_HOST}:{BACKEND_PORT}"
+# If true, this process launches and supervises `vllm serve`. Set false to run
+# vLLM as its own service (e.g. a separate systemd unit) and only proxy to it.
+MANAGE_BACKEND = _get_bool("MANAGE_BACKEND", True)
+# Optional API key the backend itself requires (gateway -> backend auth).
+BACKEND_API_KEY = os.getenv("BACKEND_API_KEY") or None
+# Max seconds to wait for the backend to finish loading the model.
+BACKEND_STARTUP_TIMEOUT = _get_int("BACKEND_STARTUP_TIMEOUT", 1800)
+# Per-request timeout to the backend for non-streaming calls (seconds).
+REQUEST_TIMEOUT = _get_float("REQUEST_TIMEOUT", 600.0)
+# vLLM launcher executable (on PATH inside the venv).
+VLLM_BIN = os.getenv("VLLM_BIN", "vllm")
+# Extra raw flags appended verbatim to `vllm serve` (space-separated). Escape
+# hatch for any vLLM flag we don't model, e.g.
+#   "--limit-mm-per-prompt image=0,video=0,audio=0"  (skip multimodal memory)
+VLLM_EXTRA_ARGS = os.getenv("VLLM_EXTRA_ARGS", "")
+
 # -------------------- Auth / CORS -------------------- #
 # Comma-separated API keys accepted via "Authorization: Bearer <key>" or
 # "X-API-Key: <key>". Empty list disables auth (dev only).

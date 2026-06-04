@@ -2,30 +2,24 @@
 # Linux + NVIDIA GPU only. vLLM does not run on native Windows (use the Linux
 # host, WSL2, or Docker). Install in a Python 3.10-3.12 venv.
 #
-# vLLM is PINNED: the OpenAI serving-handler wiring in engine/ServingClient.py
-# targets this release's API (it self-adapts to minor kwarg drift, but a major
-# bump may still need reconciling against vllm/entrypoints/openai/
-# api_server.py::init_app_state).
-#
-# The 'gemma4' architecture (e.g. unsloth/gemma-4-31B-unsloth-bnb-4bit) was
-# added in vLLM 0.19.0 and needs transformers >= 5.5.0. Pinned to a current
-# release that ships both. Verify https://docs.vllm.ai/projects/recipes for the
-# latest recommended Gemma 4 version before changing this.
+# We run vLLM's own `vllm serve` as a separate backend process and proxy to it
+# over HTTP. Our app does NOT import vllm's internals, so the vLLM version is
+# free to move — no pin is required for our code to keep working. Use a version
+# that supports your model: 'gemma4' (unsloth/gemma-4-31B-unsloth-bnb-4bit) was
+# added in vLLM 0.19.0 and needs transformers >= 5.5.0. See
+# https://docs.vllm.ai/projects/recipes for the recommended Gemma 4 version.
 # ----------------------------------------------------------------------------
-vllm==0.22.0
+vllm>=0.19.0
 transformers>=5.5.0
 
 # Required to load bitsandbytes (bnb) pre-quantized checkpoints such as the
 # unsloth gemma-4 bnb-4bit weights.
 bitsandbytes>=0.46.0
 
-# fastapi, uvicorn[standard], pydantic, and prometheus-client are pulled in and
-# version-constrained by vllm; we import them directly, so they are listed here
-# for clarity (do not hard-pin — let vllm resolve compatible versions).
+# Gateway dependencies (our app). fastapi/uvicorn/pydantic also come with vllm;
+# httpx is the proxy/client transport.
 fastapi
 uvicorn[standard]
 pydantic
-prometheus-client
-
-# Not provided by vllm:
+httpx
 python-dotenv==1.0.1
