@@ -1,0 +1,99 @@
+"""Runtime configuration, loaded from the environment (.env supported).
+
+Mirrors the sample app's `settings.py` idiom (module-level vars populated from
+env via python-dotenv) so the structure stays familiar, but every value an
+operator is expected to tune is documented in `.env.example`.
+"""
+
+import os
+
+from dotenv import load_dotenv
+
+from constants import DEFAULT_MODEL
+
+load_dotenv()
+
+
+def _get_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _get_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return int(raw)
+
+
+def _get_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return float(raw)
+
+
+def _get_csv(name: str) -> list[str]:
+    raw = os.getenv(name)
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+# -------------------- Model / engine -------------------- #
+# HuggingFace id or local path of the model to serve.
+MODEL = os.getenv("MODEL", DEFAULT_MODEL)
+# Public name advertised on /v1/models and accepted in the request "model" field.
+SERVED_MODEL_NAME = os.getenv("SERVED_MODEL_NAME", MODEL)
+# "auto" | "half" | "bfloat16" | "float16" | "float32"
+DTYPE = os.getenv("DTYPE", "auto")
+# Fraction of GPU memory vLLM may use for weights + KV cache (0-1).
+GPU_MEMORY_UTILIZATION = _get_float("GPU_MEMORY_UTILIZATION", 0.90)
+# Max context length; None lets vLLM use the model's default.
+MAX_MODEL_LEN = _get_int("MAX_MODEL_LEN", 0) or None
+# GPUs to shard the model across (single node).
+TENSOR_PARALLEL_SIZE = _get_int("TENSOR_PARALLEL_SIZE", 1)
+# Upper bound on concurrently batched sequences.
+MAX_NUM_SEQS = _get_int("MAX_NUM_SEQS", 256)
+# e.g. "awq" | "gptq" | "fp8" | "bitsandbytes"; empty means none.
+QUANTIZATION = os.getenv("QUANTIZATION") or None
+# vLLM weight loader. For pre-quantized bitsandbytes (e.g. unsloth bnb-4bit)
+# checkpoints this MUST be "bitsandbytes". Empty lets vLLM auto-pick.
+LOAD_FORMAT = os.getenv("LOAD_FORMAT") or None
+# Disable CUDA graph capture. Recommended (true) for bitsandbytes models and a
+# safe choice for the first load of a large model; costs some decode throughput.
+ENFORCE_EAGER = _get_bool("ENFORCE_EAGER", False)
+# Needed for some custom-code models (e.g. certain Qwen/Phi variants).
+TRUST_REMOTE_CODE = _get_bool("TRUST_REMOTE_CODE", False)
+# Optional explicit chat template path/string; empty uses the model's own.
+CHAT_TEMPLATE = os.getenv("CHAT_TEMPLATE") or None
+
+# Tool / function calling (OpenAI-compatible).
+ENABLE_AUTO_TOOL_CHOICE = _get_bool("ENABLE_AUTO_TOOL_CHOICE", False)
+TOOL_CALL_PARSER = os.getenv("TOOL_CALL_PARSER") or None
+
+# -------------------- Sampling defaults -------------------- #
+# Applied only when the caller omits the corresponding field.
+DEFAULT_MAX_TOKENS = _get_int("DEFAULT_MAX_TOKENS", 1024)
+DEFAULT_TEMPERATURE = _get_float("DEFAULT_TEMPERATURE", 0.7)
+
+# -------------------- HTTP server -------------------- #
+HOST = os.getenv("HOST", "0.0.0.0")
+PORT = _get_int("PORT", 8000)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
+# -------------------- Auth / CORS -------------------- #
+# Comma-separated API keys accepted via "Authorization: Bearer <key>" or
+# "X-API-Key: <key>". Empty list disables auth (dev only).
+API_KEYS = set(_get_csv("API_KEYS"))
+# Comma-separated allowed CORS origins. Default "*" with credentials OFF.
+CORS_ALLOW_ORIGINS = _get_csv("CORS_ALLOW_ORIGINS") or ["*"]
+CORS_ALLOW_CREDENTIALS = _get_bool("CORS_ALLOW_CREDENTIALS", False)
+
+# -------------------- HuggingFace -------------------- #
+# Token for gated models; vLLM/transformers read HF_TOKEN from the env directly,
+# we just surface it here for /info diagnostics.
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_HOME = os.getenv("HF_HOME")
