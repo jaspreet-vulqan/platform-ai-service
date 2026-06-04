@@ -4,15 +4,6 @@ OpenAI-compatible local LLM inference, powered by [vLLM](https://docs.vllm.ai).
 Hosts a single configurable model and exposes it over HTTP so other applications
 can consume it with the standard OpenAI SDK — just change `base_url`.
 
-## Why vLLM (not nano-vllm)
-
-nano-vllm is an educational ~1,200-line reimplementation: single maintainer, no
-PyPI releases, Qwen3-only, no HTTP server, no streaming, no async API, and
-Linux/CUDA-only. vLLM is production-grade — continuous batching + PagedAttention,
-a natively-async engine, a built-in OpenAI-compatible API, broad model support,
-quantization, tensor parallelism, LoRA, and Prometheus metrics — which is why it
-is the platform here.
-
 ## Architecture
 
 Our own FastAPI app embeds vLLM's `AsyncLLMEngine` and **delegates the OpenAI
