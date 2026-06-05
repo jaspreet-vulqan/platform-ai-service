@@ -1,8 +1,4 @@
 """Runtime configuration, loaded from the environment (.env supported).
-
-Mirrors the sample app's `settings.py` idiom (module-level vars populated from
-env via python-dotenv) so the structure stays familiar, but every value an
-operator is expected to tune is documented in `.env.example`.
 """
 
 import os
@@ -12,6 +8,14 @@ from dotenv import load_dotenv
 from constants import DEFAULT_MODEL
 
 load_dotenv()
+
+# python-dotenv turns a bare `HF_HOME=` line into HF_HOME="" in the environment,
+# and huggingface_hub then resolves its cache to a *relative* "./hub" — dumping
+# tens of GB of model weights into the current working directory (the repo!).
+# Drop empty values so HF falls back to its real default (~/.cache/huggingface).
+for _empty_var in ("HF_HOME", "HF_TOKEN"):
+    if os.environ.get(_empty_var) == "":
+        del os.environ[_empty_var]
 
 
 def _get_bool(name: str, default: bool) -> bool:
