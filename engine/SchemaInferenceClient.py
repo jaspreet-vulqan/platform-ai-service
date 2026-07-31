@@ -28,6 +28,26 @@ logger = getLogger(__name__)
 
 _DATE_TYPES = {"date", "datetime"}
 
+# Constrain the model to emit schema-valid JSON via vLLM structured outputs
+# (OpenAI-style response_format). Built once from the InferenceResult model so
+# the schema stays the single source of truth. This makes the parse
+# deterministic regardless of which model is served.
+_SCHEMA_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "InferenceResult",
+        "schema": InferenceResult.model_json_schema(),
+    },
+}
+
+
+def _preview(text: str, limit: int = 800) -> str:
+    """Truncated raw model output for failure diagnostics."""
+    text = text or ""
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}... [+{len(text) - limit} chars]"
+
 
 def parseInference(text: str) -> InferenceResult:
     """Parse + validate the LLM's JSON into InferenceResult. Raises on failure."""
@@ -94,7 +114,10 @@ async def inferSchema(file_schema: FileSchemaInput) -> Result:
         max_tokens = _maxTokensFor(len(file_schema.Columns))
 
         result = await chatComplete(
-            messages, temperature=0.0, max_tokens=max_tokens
+            messages,
+            temperature=0.0,
+            max_tokens=max_tokens,
+            response_format=_SCHEMA_RESPONSE_FORMAT,
         )
         if result.Status != 1:
             return Result(Status=0, Message=result.Message)
@@ -102,8 +125,13 @@ async def inferSchema(file_schema: FileSchemaInput) -> Result:
         try:
             inference = parseInference(result.Data)
         except Exception as parse_err:
-            # One corrective retry — local models occasionally add stray prose.
-            logger.warning("First inference parse failed (%s); retrying.", parse_err)
+            # Structured outputs should make this unreachable; kept as a safety
+            # net. Log the raw output so any malformation is diagnosable.
+            logger.warning(
+                "First inference parse failed (%s); retrying. Raw output: %s",
+                parse_err,
+                _preview(result.Data),
+            )
             messages.append({"role": "assistant", "content": result.Data or ""})
             messages.append(
                 {
@@ -115,11 +143,22 @@ async def inferSchema(file_schema: FileSchemaInput) -> Result:
                 }
             )
             result = await chatComplete(
-                messages, temperature=0.0, max_tokens=max_tokens
+                messages,
+                temperature=0.0,
+                max_tokens=max_tokens,
+                response_format=_SCHEMA_RESPONSE_FORMAT,
             )
             if result.Status != 1:
                 return Result(Status=0, Message=result.Message)
-            inference = parseInference(result.Data)
+            try:
+                inference = parseInference(result.Data)
+            except Exception as retry_err:
+                logger.error(
+                    "Retry inference parse also failed (%s). Raw output: %s",
+                    retry_err,
+                    _preview(result.Data),
+                )
+                raise
 
         output = buildOutput(file_schema, inference)
         return Result(

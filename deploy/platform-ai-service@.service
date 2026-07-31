@@ -1,0 +1,39 @@
+# Reference systemd TEMPLATE unit for the g7e box. Mirrors the deployed unit at
+# /etc/systemd/system/platform-ai-service@.service. The model to serve is the
+# instance name (%i) -> MODEL_PROFILE, resolved by profiles.py.
+#
+# The ONLY functional change from the previous single (non-template) unit is:
+#   - the filename gains the @  (platform-ai-service.service -> @.service), and
+#   - the `Environment=MODEL_PROFILE=%i` line below.
+# Every other line is unchanged. Diff this against your live unit before applying.
+#
+# Deploy:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now platform-ai-service@granite # boot default = granite
+#
+# Switch models:
+#   sudo systemctl stop 'platform-ai-service@*'
+#   sudo systemctl start platform-ai-service@gemma          # or: sudo ./switch-model.sh gemma
+
+[Unit]
+Description=platform-ai-service (vLLM gateway + backend) — profile %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/code/platform-ai-service
+# sm_120 / Blackwell + CUDA-13 toolchain (see MODELS.md gotchas):
+Environment=CUDA_HOME=/usr/local/cuda
+Environment=PATH=/home/ubuntu/code/platform-ai-service/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HF_HOME=/home/ubuntu/code/platform-ai-service/.cache/huggingface
+# The selected model profile — the systemd instance after the @ (see profiles.py):
+Environment=MODEL_PROFILE=%i
+ExecStart=/home/ubuntu/code/platform-ai-service/bin/python main.py
+Restart=always
+RestartSec=5
+# Big models can take a while to load; app-level BACKEND_STARTUP_TIMEOUT gates too.
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

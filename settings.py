@@ -17,6 +17,13 @@ for _empty_var in ("HF_HOME", "HF_TOKEN"):
     if os.environ.get(_empty_var) == "":
         del os.environ[_empty_var]
 
+# Seed os.environ from the selected model profile (MODEL_PROFILE / systemd
+# instance) BEFORE the per-model reads below. Profiles override any stale .env
+# values; a MODEL_PROFILE of env/custom/empty is a no-op (raw .env passthrough).
+import profiles  # noqa: E402  (must run after load_dotenv, before the reads)
+
+profiles.applyProfile()
+
 
 def _get_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)

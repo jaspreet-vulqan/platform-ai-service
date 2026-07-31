@@ -19,8 +19,14 @@ async def chatComplete(
     messages: List[dict],
     temperature: float = 0.0,
     max_tokens: Optional[int] = None,
+    response_format: Optional[dict] = None,
 ) -> Result:
-    """Run a non-streaming chat completion. Result.Data is the assistant text."""
+    """Run a non-streaming chat completion. Result.Data is the assistant text.
+
+    Pass ``response_format`` (e.g. an OpenAI-style ``{"type": "json_schema",
+    ...}``) to enable vLLM structured outputs and constrain the model to valid,
+    schema-matching JSON. Omitted for free-form completions.
+    """
     try:
         payload = {
             "model": settings.SERVED_MODEL_NAME,
@@ -29,6 +35,8 @@ async def chatComplete(
             "max_tokens": max_tokens or settings.DEFAULT_MAX_TOKENS,
             "stream": False,
         }
+        if response_format:
+            payload["response_format"] = response_format
         resp = await getClient().post(
             "/v1/chat/completions",
             json=payload,
